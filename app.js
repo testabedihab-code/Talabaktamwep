@@ -758,15 +758,6 @@ function submitMonthlyBooking(id){
   msg+='▫️ الهاتف: '+phone+'\n';
   msg+='\n✅ بانتظار التأكيد\nشكراً لكم 🙏';
   window.open('https://wa.me/'+l.phone+'?text='+encodeURIComponent(msg),'_blank');
-
-  // === BRIDGE: Push to admin panel ===
-  _pushDealToAdmin({
-    name: name, last: last, phone: phone,
-    listingTitle: l.title, listingId: l.id, catId: l.catId,
-    bookingType: 'rent',
-    duration: (_selectedMonths===-1 ? 'مدة غير محددة' : _selectedMonths+' شهر'),
-    message: 'طلب إيجار شهري — المدة: '+(_selectedMonths===-1?'غير محددة':_selectedMonths+' شهر'),
-  });
 }
 
 function closeRentDetail(){
@@ -837,21 +828,6 @@ function submitBooking(id){
   
   window.open('https://wa.me/'+l.phone+'?text='+encodeURIComponent(msg),'_blank');
   
-  // === BRIDGE: Push to admin panel ===
-  _pushDealToAdmin({
-    name: name,
-    last: last,
-    phone: phone,
-    listingTitle: l.title,
-    listingId: l.id,
-    catId: l.catId,
-    bookingType: isRent(l.catId) ? 'rent' : 'sale',
-    startDate: _calStart ? _calStart.toISOString().slice(0,10) : '',
-    endDate: _calEnd ? _calEnd.toISOString().slice(0,10) : '',
-    duration: d ? d + ' يوم' : '',
-    message: 'طلب حجز — ' + (address ? 'العنوان: ' + address : '') + (email ? ' | الإيميل: ' + email : ''),
-  });
-
   // Show confirmation overlay
   showBookConfirm();
 }
@@ -918,16 +894,6 @@ function openWA(id){
   }
   msg+='\nأرجو التواصل معي لمزيد من التفاصيل 🙏\nشكراً لكم ✨';
   window.open('https://wa.me/'+l.phone+'?text='+encodeURIComponent(msg),'_blank');
-
-  // === BRIDGE: Push to admin panel ===
-  _pushDealToAdmin({
-    name: 'عميل واتساب', last: '',
-    phone: '', listingTitle: l.title, listingId: l.id, catId: l.catId,
-    bookingType: rent ? 'rent' : 'sale',
-    startDate: _calStart ? _calStart.toISOString().slice(0,10) : '',
-    endDate: _calEnd ? _calEnd.toISOString().slice(0,10) : '',
-    message: 'استفسار عبر واتساب',
-  });
 }
 
 function shareListing(id){
@@ -968,18 +934,10 @@ function clearCal(){_calStart=null;_calEnd=null;renderCal();}
 function renderCal(){
   document.getElementById('calMonth').textContent=MONTHS[calM]+' '+calY;
   const fd=new Date(calY,calM,1).getDay(),dm=new Date(calY,calM+1,0).getDate(),td=new Date();td.setHours(0,0,0,0);
-  // Get booked dates from Firestore cache (with localStorage fallback)
+  // Get booked dates for current listing
+  const _bookedDates=JSON.parse(localStorage.getItem('tam_booked')||'{}');
   const lid=window._currentListing?window._currentListing.id:null;
-  let booked=[];
-  if(lid && _bookedCache[lid]) {
-    booked = _bookedCache[lid];
-  } else if(lid) {
-    // Fallback to localStorage while Firestore loads
-    const _bookedDates=JSON.parse(localStorage.getItem('tam_booked')||'{}');
-    booked=_bookedDates[lid]||[];
-    // Async load from Firestore for next render
-    _preloadBooked(lid);
-  }
+  const booked=lid?(_bookedDates[lid]||[]):[];
   let h=DAYS.map(d=>`<div class="cal-dn">${d}</div>`).join('');
   for(let i=0;i<fd;i++)h+=`<div class="cal-d emp"><span class="cd-in"></span></div>`;
   for(let d=1;d<=dm;d++){
@@ -1151,88 +1109,6 @@ function dismissInstall(){
 function hideInstallBanner(){
   const b = document.getElementById('installBanner');
   if(b) b.remove();
-}
-
-// ===================================================================
-// BRIDGE: Push deal data to Admin Panel via Firebase Firestore
-// Fallback to localStorage if Firebase not available
-// ===================================================================
-
-async function _pushDealToAdmin(data) {
-  const deal = {
-    customerName: (data.name || '') + (data.last ? ' ' + data.last : ''),
-    phone: data.phone || '',
-    listingTitle: data.listingTitle || '',
-    listingId: data.listingId || 0,
-    listingCat: data.catId || '',
-    bookingType: data.bookingType || 'rent',
-    startDate: data.startDate || '',
-    endDate: data.endDate || '',
-    duration: data.duration || '',
-    message: data.message || '',
-    status: 'pending',
-    createdAt: new Date().toISOString(),
-    isNew: true,
-  };
-
-  // Try Firestore first
-  try {
-    await window._fbReady;
-    if (window.FB) {
-      await FB.addDoc(FB.collection(FB.db, 'incomingDeals'), deal);
-      console.log('[Bridge] ✅ Deal pushed to Firestore');
-      return;
-    }
-  } catch(e) {
-    console.warn('[Bridge] Firestore failed, using localStorage fallback:', e);
-  }
-
-  // Fallback: localStorage
-  try {
-    deal.id = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
-    const deals = JSON.parse(localStorage.getItem('tam_incoming_deals') || '[]');
-    deals.unshift(deal);
-    localStorage.setItem('tam_incoming_deals', JSON.stringify(deals));
-    console.log('[Bridge] Deal saved to localStorage');
-  } catch(e2) {
-    console.warn('[Bridge] localStorage also failed:', e2);
-  }
-}
-
-// ===================================================================
-// BOOKED DATES: Read from Firestore (with localStorage fallback)
-// Used by renderCal() to show blocked dates
-// ===================================================================
-
-async function _loadBookedDates(listingId) {
-  // Try Firestore
-  try {
-    if (window.FB) {
-      const ref = FB.doc(FB.db, 'bookedDates', String(listingId));
-      const snap = await FB.getDoc(ref);
-      if (snap.exists()) {
-        return snap.data().dates || [];
-      }
-      return [];
-    }
-  } catch(e) {
-    console.warn('[BookedDates] Firestore failed, using localStorage:', e);
-  }
-
-  // Fallback: localStorage
-  const all = JSON.parse(localStorage.getItem('tam_booked') || '{}');
-  return all[listingId] || [];
-}
-
-// Cache for booked dates (avoid re-fetching every render)
-let _bookedCache = {};
-let _bookedCacheLid = null;
-
-// Pre-load booked dates when detail page opens
-async function _preloadBooked(lid) {
-  if (_bookedCacheLid === lid) return;
-  _bookedCacheLid = lid;
-  _bookedCache[lid] = await _loadBookedDates(lid);
 }
 
 // Service Worker registration

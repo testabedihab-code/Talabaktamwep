@@ -53,7 +53,7 @@ const EQUIP_IMGS=[
   'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=600&h=400&fit=crop'
 ];
 
-let listings=[
+const DEFAULT_LISTINGS=[
   {id:1,catId:'apt-rent',title:'شقة مفروشة مطلة على البحر',price:150000,location:'الكورنيش',desc:'شقة مفروشة بالكامل، إطلالة بحرية مميزة، طابق ثالث مع مصعد.\nمناسبة للعائلات الصغيرة. تشمل الأجرة الماء والإنترنت.',phone:'963930991965',featured:true,images:[APT_IMGS[0],APT_IMGS[1],APT_IMGS[2]],rooms:2,baths:1,area:85,kitchens:1,balconies:1,living:1,storage:0},
   {id:2,catId:'apt-sale',title:'شقة فاخرة في وسط المدينة',price:85000000,location:'وسط جبلة',desc:'شقة 120 متر مربع، 3 غرف نوم، صالون كبير، مطبخ مجهز.\nموقع مميز قرب جميع الخدمات.',phone:'963930991965',featured:true,images:[APT_IMGS[3],APT_IMGS[4],APT_IMGS[0]],rooms:3,baths:2,area:120,kitchens:1,balconies:2,living:1,storage:1,negotiable:true},
   {id:3,catId:'car-rent',title:'كيا سيراتو 2022 للإيجار اليومي',price:150000,location:'وسط جبلة',desc:'سيارة نظيفة جداً، فل كامل، أوتوماتيك.\nالإيجار يشمل التأمين.',phone:'963930991965',featured:true,images:[CAR_IMGS[0],CAR_IMGS[1],CAR_IMGS[2]],carType:'كيا',carModel:'سيراتو',carYear:2022,carKm:25000,carColor:'أبيض',carClass:'سيدان'},
@@ -70,6 +70,33 @@ let listings=[
   {id:14,catId:'equip-sale',title:'مولدة كهرباء 50 كيلوواط',price:18000000,location:'حي المشروع',desc:'مولدة كهرباء ديزل 50KW.\nساعات تشغيل قليلة، مع كفالة.',phone:'963930991965',featured:false,images:[EQUIP_IMGS[4],EQUIP_IMGS[2],EQUIP_IMGS[0]],negotiable:false},
   {id:15,catId:'equip-rent',title:'كمبريسور هواء صناعي للإيجار',price:100000,location:'حي الزهراء',desc:'كمبريسور هواء صناعي متنقل.\nمناسب لأعمال الدهان والتنظيف الصناعي.',phone:'963930991965',featured:true,images:[EQUIP_IMGS[3],EQUIP_IMGS[1],EQUIP_IMGS[4]]},
 ];
+
+/* ===== ADMIN SHARED STORAGE ===== */
+const TAM_STORAGE_KEY='tam_listings';
+const TAM_SETTINGS_KEY='tam_settings';
+const TAM_SOCIAL_KEY='tam_social';
+function saveListings(){try{localStorage.setItem(TAM_STORAGE_KEY,JSON.stringify(listings));}catch(e){}}
+function loadSocialLinks(){try{const s=JSON.parse(localStorage.getItem(TAM_SOCIAL_KEY)||'{}');return{facebook:s.facebook||'https://www.facebook.com/',instagram:s.instagram||'https://www.instagram.com/',telegram:s.telegram||'https://t.me/'};}catch(e){return{facebook:'https://www.facebook.com/',instagram:'https://www.instagram.com/',telegram:'https://t.me/'};}}
+
+/* Load listings from localStorage if admin panel modified them */
+(function(){
+  try{
+    const stored=localStorage.getItem(TAM_STORAGE_KEY);
+    if(stored){const parsed=JSON.parse(stored);if(Array.isArray(parsed)){DEFAULT_LISTINGS.length=0;parsed.forEach(i=>DEFAULT_LISTINGS.push(i));}}
+    else{localStorage.setItem(TAM_STORAGE_KEY,JSON.stringify(DEFAULT_LISTINGS));}
+  }catch(e){}
+})();
+let listings=DEFAULT_LISTINGS;
+
+/* Apply social links on load */
+window.addEventListener('DOMContentLoaded',function(){
+  try{const s=loadSocialLinks();document.querySelectorAll('a[href*="facebook.com"]').forEach(a=>{a.href=s.facebook;});document.querySelectorAll('a[href*="instagram.com"]').forEach(a=>{a.href=s.instagram;});document.querySelectorAll('a[href*="t.me"],a[href*="telegram"]').forEach(a=>{a.href=s.telegram;});}catch(e){}
+});
+
+/* Cross-tab sync from admin panel */
+window.addEventListener('storage',function(e){
+  if(e.key===TAM_STORAGE_KEY&&e.newValue){try{const u=JSON.parse(e.newValue);if(Array.isArray(u)){listings.length=0;u.forEach(i=>listings.push(i));if(typeof renderHome==='function')renderHome();}}catch(ex){}}
+});
 
 let sC=null, sType=null, sQ='', sFeatured=false, carouselTimers=[];
 let calY,calM,_calStart=null,_calEnd=null,_calPrice=0;
